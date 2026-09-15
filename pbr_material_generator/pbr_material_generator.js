@@ -1,6 +1,6 @@
 /*
  * PBR Material Generator for Blockbench
- * Generates Normal, Height, and packed MER maps from the currently selected texture.
+ * Generates and connects a PBR material group from the currently selected texture.
  *
  * MER convention used here:
  *   R = Metallic
@@ -107,6 +107,41 @@ function addGeneratedTexture(name, canvas, pbrChannel) {
     return texture;
 }
 
+function createOrGetPBRMaterialGroup(sourceTexture, createdTextures) {
+    let group = typeof sourceTexture.getGroup === 'function' ? sourceTexture.getGroup() : null;
+
+    if (!group || !group.is_material) {
+        if (typeof TextureGroup === 'undefined') {
+            throw new Error('This Blockbench version does not provide PBR material groups. Please update Blockbench.');
+        }
+        group = new TextureGroup({
+            name: sourceTexture.name.replace(/\.[^/.]+$/, '') + ' PBR Material',
+            is_material: true
+        });
+    }
+
+    // The selected/original texture is the albedo (base color) texture.
+    sourceTexture.pbr_channel = 'color';
+    sourceTexture.group = group.uuid;
+
+    // Put all generated maps into the same material group so Blockbench's
+    // built-in PBR material system can connect them automatically.
+    for (const texture of createdTextures) {
+        texture.group = group.uuid;
+    }
+
+    // Register the group after its texture assignments are ready. Blockbench's
+    // TextureGroup.add() creates/updates the actual Three.js PBR material.
+    if (!TextureGroup.all.includes(group)) {
+        group.add();
+    } else {
+        group.updateMaterial();
+    }
+
+    group.updateMaterial();
+    return group;
+}
+
 function generatePBR(sourceTexture, settings) {
     const sourceCanvas = sourceTexture.canvas;
     if (!sourceCanvas || !sourceCanvas.width || !sourceCanvas.height) {
@@ -123,7 +158,9 @@ function generatePBR(sourceTexture, settings) {
     created.push(addGeneratedTexture(baseName + '_height', height, 'height'));
     created.push(addGeneratedTexture(baseName + '_mer', mer, 'mer'));
 
-    return created;
+    const materialGroup = createOrGetPBRMaterialGroup(sourceTexture, created);
+
+    return {textures: created, materialGroup};
 }
 
 function openPBRDialog() {
@@ -142,7 +179,7 @@ function openPBRDialog() {
 
     pbr_dialog = new Dialog({
         id: 'pbr_material_generator_dialog',
-        title: 'Generate PBR Maps',
+        title: 'Generate PBR Material',
         icon: 'texture',
         width: 480,
         form: {
@@ -213,9 +250,15 @@ function openPBRDialog() {
                     normal_strength: clamp(Number(result.normal_strength) || 0, 0, 100),
                     detail: clamp(Number(result.detail) || 0, 0, 100)
                 };
-                const created = generatePBR(source, settings);
+                const resultData = generatePBR(source, settings);
+                const created = resultData.textures;
+                const materialGroup = resultData.materialGroup;
+
+                // Keep the generated material connected and make the PBR material
+                // visible in Blockbench's material view when that view is available.
+                materialGroup.updateMaterial();
                 created[0].select();
-                Blockbench.showQuickMessage('PBR maps generated: Normal, Height and MER.');
+                Blockbench.showQuickMessage('PBR material created and connected: Color + Normal + Height + MER.');
             } catch (error) {
                 console.error('[PBR Material Generator]', error);
                 Blockbench.showMessageBox({
@@ -249,9 +292,9 @@ function getLoaderPluginId(fallback) {
 Plugin.register(getLoaderPluginId('pbr_material_generator'), {
     title: 'PBR Material Generator',
     author: 'yamasung7-dot',
-    description: 'Generate editable PBR maps from the selected Blockbench texture.',
+    description: 'Generate and connect an editable PBR material from the selected Blockbench texture.',
     icon: 'texture',
-    version: '0.1.0',
+    version: '0.2.0',
     variant: 'both',
     min_version: '4.9.0',
     new_repository_format: true,
@@ -260,7 +303,7 @@ Plugin.register(getLoaderPluginId('pbr_material_generator'), {
     onload() {
         pbr_action = new Action('pbr_material_generator', {
             name: 'Generate PBR Material',
-            description: 'Generate Normal, Height and MER maps from the selected texture',
+            description: 'Generate and connect Normal, Height and MER maps to the selected texture',
             icon: 'texture',
             click: openPBRDialog
         });
