@@ -42,3 +42,7 @@ The prototype keeps emissive at zero unless future controls are added.
 ## License
 
 MIT
+
+## CI
+
+Automated syntax and smoke tests run with GitHub Actions.
