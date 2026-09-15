@@ -112,7 +112,7 @@ vm.runInNewContext(source, context, {filename: 'pbr_material_generator.js'});
 
 assert.strictEqual(registrations.length, 1, 'Plugin should register exactly once');
 assert.strictEqual(registrations[0].id, 'pbr_material_generator');
-assert.strictEqual(registrations[0].definition.version, '0.2.0');
+assert.strictEqual(registrations[0].definition.version, '0.2.1');
 
 registrations[0].definition.onload();
 assert.strictEqual(actions.length, 1, 'Plugin should create one action');
