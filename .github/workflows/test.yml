@@ -1,0 +1,20 @@
+name: Test Blockbench Plugin
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Syntax check
+        run: node --check pbr_material_generator/pbr_material_generator.js
+      - name: Smoke test
+        run: node tests/smoke_test.js
