@@ -1,11 +1,7 @@
 /*
  * PBR Material Generator for Blockbench
- * Generates and connects a PBR material group from the currently selected texture.
- *
- * MER convention used here:
- *   R = Metallic
- *   G = Emissive (0 by default)
- *   B = Roughness
+ * Generates and connects a PBR material group from the selected texture.
+ * MER: R = Metallic, G = Emissive, B = Roughness.
  */
 
 let pbr_action;
@@ -66,12 +62,9 @@ function createMapCanvas(sourceCanvas, kind, settings) {
             const dy = (down - up) * normalStrength;
 
             if (kind === 'normal') {
-                const nx = clamp(128 - dx * 127, 0, 255);
-                const ny = clamp(128 - dy * 127, 0, 255);
-                const nz = clamp(255 - (Math.abs(dx) + Math.abs(dy)) * 80, 80, 255);
-                out[i] = nx;
-                out[i + 1] = ny;
-                out[i + 2] = nz;
+                out[i] = clamp(128 - dx * 127, 0, 255);
+                out[i + 1] = clamp(128 - dy * 127, 0, 255);
+                out[i + 2] = clamp(255 - (Math.abs(dx) + Math.abs(dy)) * 80, 80, 255);
                 out[i + 3] = data[i + 3];
             } else if (kind === 'height') {
                 const enhanced = clamp((h - 0.5) * (0.7 + detail * 1.3) + 0.5, 0, 1);
@@ -80,7 +73,7 @@ function createMapCanvas(sourceCanvas, kind, settings) {
                 out[i + 1] = v;
                 out[i + 2] = v;
                 out[i + 3] = data[i + 3];
-            } else if (kind === 'mer') {
+            } else {
                 const localRoughness = clamp(roughness + (h - 0.5) * 35 * detail, 0, 255);
                 out[i] = metallic;
                 out[i + 1] = 0;
@@ -96,7 +89,7 @@ function createMapCanvas(sourceCanvas, kind, settings) {
 
 function addGeneratedTexture(name, canvas, pbrChannel) {
     const texture = new Texture({
-        name: name,
+        name,
         internal: true,
         source: canvas.toDataURL('image/png'),
         width: canvas.width,
@@ -120,24 +113,11 @@ function createOrGetPBRMaterialGroup(sourceTexture, createdTextures) {
         });
     }
 
-    // The selected/original texture is the albedo (base color) texture.
     sourceTexture.pbr_channel = 'color';
     sourceTexture.group = group.uuid;
+    for (const texture of createdTextures) texture.group = group.uuid;
 
-    // Put all generated maps into the same material group so Blockbench's
-    // built-in PBR material system can connect them automatically.
-    for (const texture of createdTextures) {
-        texture.group = group.uuid;
-    }
-
-    // Register the group after its texture assignments are ready. Blockbench's
-    // TextureGroup.add() creates/updates the actual Three.js PBR material.
-    if (!TextureGroup.all.includes(group)) {
-        group.add();
-    } else {
-        group.updateMaterial();
-    }
-
+    if (!TextureGroup.all.includes(group)) group.add();
     group.updateMaterial();
     return group;
 }
@@ -149,33 +129,19 @@ function generatePBR(sourceTexture, settings) {
     }
 
     const baseName = sourceTexture.name.replace(/\.[^/.]+$/, '');
-    const normal = createMapCanvas(sourceCanvas, 'normal', settings);
-    const height = createMapCanvas(sourceCanvas, 'height', settings);
-    const mer = createMapCanvas(sourceCanvas, 'mer', settings);
+    const created = [
+        addGeneratedTexture(baseName + '_normal', createMapCanvas(sourceCanvas, 'normal', settings), 'normal'),
+        addGeneratedTexture(baseName + '_height', createMapCanvas(sourceCanvas, 'height', settings), 'height'),
+        addGeneratedTexture(baseName + '_mer', createMapCanvas(sourceCanvas, 'mer', settings), 'mer')
+    ];
 
-    const created = [];
-    created.push(addGeneratedTexture(baseName + '_normal', normal, 'normal'));
-    created.push(addGeneratedTexture(baseName + '_height', height, 'height'));
-    created.push(addGeneratedTexture(baseName + '_mer', mer, 'mer'));
-
-    const materialGroup = createOrGetPBRMaterialGroup(sourceTexture, created);
-
-    return {textures: created, materialGroup};
+    return {textures: created, materialGroup: createOrGetPBRMaterialGroup(sourceTexture, created)};
 }
 
 function openPBRDialog() {
     const source = Texture.selected;
-    if (!source) {
-        Blockbench.showQuickMessage('Select a texture first.');
-        return;
-    }
-
-    if (!source.canvas || !source.canvas.width) {
-        Blockbench.showQuickMessage('The selected texture has not finished loading.');
-        return;
-    }
-
-    const defaults = PRESETS.custom;
+    if (!source) return Blockbench.showQuickMessage('Select a texture first.');
+    if (!source.canvas || !source.canvas.width) return Blockbench.showQuickMessage('The selected texture has not finished loading.');
 
     pbr_dialog = new Dialog({
         id: 'pbr_material_generator_dialog',
@@ -184,63 +150,18 @@ function openPBRDialog() {
         width: 480,
         form: {
             preset: {
-                label: 'Material',
-                type: 'select',
-                options: {
-                    custom: 'Custom',
-                    metal: 'Metal',
-                    wood: 'Wood',
-                    dirt: 'Dirt',
-                    stone: 'Stone',
-                    plastic: 'Plastic',
-                    fabric: 'Fabric',
-                    glass: 'Glass'
-                },
+                label: 'Material', type: 'select',
+                options: {custom: 'Custom', metal: 'Metal', wood: 'Wood', dirt: 'Dirt', stone: 'Stone', plastic: 'Plastic', fabric: 'Fabric', glass: 'Glass'},
                 value: 'custom'
             },
-            metallic: {
-                label: 'Metallic',
-                type: 'number',
-                min: 0,
-                max: 100,
-                step: 1,
-                value: defaults.metallic,
-                description: 'How metallic the material should be.'
-            },
-            shininess: {
-                label: 'Shininess',
-                type: 'number',
-                min: 0,
-                max: 100,
-                step: 1,
-                value: defaults.shininess,
-                description: 'Higher values make the surface smoother and more reflective.'
-            },
-            normal_strength: {
-                label: 'Normal Strength',
-                type: 'number',
-                min: 0,
-                max: 100,
-                step: 1,
-                value: defaults.normal_strength,
-                description: 'Strength of the generated surface relief.'
-            },
-            detail: {
-                label: 'Surface Detail',
-                type: 'number',
-                min: 0,
-                max: 100,
-                step: 1,
-                value: defaults.detail,
-                description: 'How strongly the source texture influences height and roughness variation.'
-            }
+            metallic: {label: 'Metallic', type: 'number', min: 0, max: 100, step: 1, value: 0},
+            shininess: {label: 'Shininess', type: 'number', min: 0, max: 100, step: 1, value: 45},
+            normal_strength: {label: 'Normal Strength', type: 'number', min: 0, max: 100, step: 1, value: 55},
+            detail: {label: 'Surface Detail', type: 'number', min: 0, max: 100, step: 1, value: 50}
         },
         buttons: ['Generate PBR', 'Cancel'],
         onFormChange(result) {
-            if (result.preset && PRESETS[result.preset]) {
-                const preset = PRESETS[result.preset];
-                this.setFormValues(preset, false);
-            }
+            if (result.preset && PRESETS[result.preset]) this.setFormValues(PRESETS[result.preset], false);
         },
         onConfirm(result) {
             try {
@@ -251,50 +172,51 @@ function openPBRDialog() {
                     detail: clamp(Number(result.detail) || 0, 0, 100)
                 };
                 const resultData = generatePBR(source, settings);
-                const created = resultData.textures;
-                const materialGroup = resultData.materialGroup;
-
-                // Keep the generated material connected and make the PBR material
-                // visible in Blockbench's material view when that view is available.
-                materialGroup.updateMaterial();
-                created[0].select();
+                resultData.materialGroup.updateMaterial();
+                resultData.textures[0].select();
                 Blockbench.showQuickMessage('PBR material created and connected: Color + Normal + Height + MER.');
             } catch (error) {
                 console.error('[PBR Material Generator]', error);
-                Blockbench.showMessageBox({
-                    title: 'PBR Generation Failed',
-                    message: error.message || String(error),
-                    icon: 'error'
-                });
+                Blockbench.showMessageBox({title: 'PBR Generation Failed', message: error.message || String(error), icon: 'error'});
                 return false;
             }
         }
     });
-
     pbr_dialog.show();
 }
 
-// Blockbench derives the plugin ID from the loaded file/URL before executing it.
-// If a side-loaded URL is presented in an unusual form, use the loader's pending
-// registration entry so Plugin.register receives the exact ID Blockbench expects.
-function getLoaderPluginId(fallback) {
-    if (typeof Plugins === 'undefined' || !Plugins.registered) return fallback;
-    if (Plugins.registered[fallback]) return fallback;
+/*
+ * URL/file imports are registered by Blockbench under the ID derived from the
+ * imported filename. Normalize that pending registration to our canonical ID
+ * before Plugin.register runs. This makes the plugin appear in Installed and
+ * gives Uninstall/Reload the same stable ID every time it is imported.
+ */
+function normalizePluginLoaderId() {
+    const canonical = 'pbr_material_generator';
+    if (typeof Plugins === 'undefined' || !Plugins.registered) return canonical;
+    if (Plugins.registered[canonical]) return canonical;
 
-    const pending = Object.keys(Plugins.registered).find(id => {
+    const pendingId = Object.keys(Plugins.registered).find(id => {
         const plugin = Plugins.registered[id];
         return plugin && !plugin.installed && plugin.path === '' &&
             (plugin.source === 'url' || plugin.source === 'file');
     });
-    return pending || fallback;
+
+    if (pendingId && pendingId !== canonical) {
+        const plugin = Plugins.registered[pendingId];
+        delete Plugins.registered[pendingId];
+        plugin.id = canonical;
+        Plugins.registered[canonical] = plugin;
+    }
+    return canonical;
 }
 
-Plugin.register(getLoaderPluginId('pbr_material_generator'), {
+Plugin.register(normalizePluginLoaderId(), {
     title: 'PBR Material Generator',
     author: 'yamasung7-dot',
     description: 'Generate and connect an editable PBR material from the selected Blockbench texture.',
     icon: 'texture',
-    version: '0.2.0',
+    version: '0.2.1',
     variant: 'both',
     min_version: '4.9.0',
     new_repository_format: true,
@@ -309,6 +231,9 @@ Plugin.register(getLoaderPluginId('pbr_material_generator'), {
         });
         MenuBar.menus.tools.addAction(pbr_action);
     },
+    oninstall() {
+        Blockbench.showQuickMessage('PBR Material Generator installed.');
+    },
     onunload() {
         if (pbr_dialog) {
             pbr_dialog.delete();
@@ -318,5 +243,8 @@ Plugin.register(getLoaderPluginId('pbr_material_generator'), {
             pbr_action.delete();
             pbr_action = null;
         }
+    },
+    onuninstall() {
+        Blockbench.showQuickMessage('PBR Material Generator uninstalled.');
     }
 });
