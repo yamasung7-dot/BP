@@ -56,6 +56,13 @@ const context = {
         delete() {}
     },
     MenuBar: {menus: {tools: {addAction(action) { this.action = action; }}}},
+    BarItems: {
+        view_mode: {
+            value: 'textured',
+            set(value) { this.value = value; },
+            onChange() {}
+        }
+    },
     Dialog: class {
         constructor(options) {
             this.options = options;
@@ -74,12 +81,20 @@ const context = {
 };
 
 context.Texture = class {
-    constructor(options) {
+    constructor(options = {}) {
         Object.assign(this, options);
         this.canvas = new FakeCanvas(options.width || 4, options.height || 4);
+        this.source = options.source || '';
         generatedTextures.push(this);
     }
-    add() {}
+    fromDataURL(dataUrl) {
+        this.source = dataUrl;
+        this.internal = true;
+        return this;
+    }
+    add() { return this; }
+    updateMaterial() {}
+    remove() {}
     select() { this.selected = true; }
     getGroup() {
         return context.TextureGroup.all.find(group => group.uuid === this.group);
@@ -100,6 +115,9 @@ context.TextureGroup = class {
         this.updateMaterial();
         return this;
     }
+    getTextures() {
+        return generatedTextures.filter(texture => texture.group === this.uuid);
+    }
     updateMaterial() {
         this.updateCount++;
     }
@@ -112,7 +130,7 @@ vm.runInNewContext(source, context, {filename: 'pbr_material_generator.js'});
 
 assert.strictEqual(registrations.length, 1, 'Plugin should register exactly once');
 assert.strictEqual(registrations[0].id, 'pbr_material_generator');
-assert.strictEqual(registrations[0].definition.version, '0.2.1');
+assert.strictEqual(registrations[0].definition.version, '0.3.0');
 
 registrations[0].definition.onload();
 assert.strictEqual(actions.length, 1, 'Plugin should create one action');
@@ -147,7 +165,8 @@ assert.strictEqual(materialGroup.is_material, true, 'The group must be a materia
 assert.strictEqual(context.Texture.selected.group, materialGroup.uuid, 'Base texture must be connected to the material');
 assert.ok(generated.every(texture => texture.group === materialGroup.uuid), 'All generated maps must share the material group');
 assert.ok(materialGroup.updateCount >= 1, 'PBR material must be updated after connecting maps');
-assert.strictEqual(context.lastMessage, 'PBR material created and connected: Color + Normal + Height + MER.');
+assert.strictEqual(context.BarItems.view_mode.value, 'material', 'Generation should switch to Material preview');
+assert.strictEqual(context.lastMessage, 'PBR material created: Color + Normal + Height + MER.');
 assert.strictEqual(context.lastError, undefined, 'Generation should not report an error');
 
-console.log('Smoke test passed: registration, Tools action, material group creation, map generation, and PBR connections.');
+console.log('Smoke test passed: registration, Tools action, material group creation, map generation, texture loading, and Material preview.');
