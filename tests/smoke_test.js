@@ -13,15 +13,9 @@ class FakeContext {
             this.pixels[i + 3] = 255;
         }
     }
-    getImageData() {
-        return {data: new Uint8ClampedArray(this.pixels)};
-    }
-    createImageData(width, height) {
-        return {data: new Uint8ClampedArray(width * height * 4)};
-    }
-    putImageData(imageData) {
-        this.pixels = new Uint8ClampedArray(imageData.data);
-    }
+    getImageData() { return {data: new Uint8ClampedArray(this.pixels)}; }
+    createImageData(width, height) { return {data: new Uint8ClampedArray(width * height * 4)}; }
+    putImageData(imageData) { this.pixels = new Uint8ClampedArray(imageData.data); }
 }
 
 class FakeCanvas {
@@ -30,16 +24,13 @@ class FakeCanvas {
         this.height = height;
         this.ctx = new FakeContext(this);
     }
-    getContext() {
-        return this.ctx;
-    }
-    toDataURL() {
-        return 'data:image/png;base64,TEST';
-    }
+    getContext() { return this.ctx; }
+    toDataURL() { return 'data:image/png;base64,TEST'; }
 }
 
 const registrations = [];
 const actions = [];
+const dialogs = [];
 const generatedTextures = [];
 
 const context = {
@@ -53,9 +44,7 @@ const context = {
         }
     },
     Plugin: {
-        register(id, definition) {
-            registrations.push({id, definition});
-        }
+        register(id, definition) { registrations.push({id, definition}); }
     },
     Action: class {
         constructor(id, options) {
@@ -67,7 +56,10 @@ const context = {
     },
     MenuBar: {menus: {tools: {addAction(action) { this.action = action; }}}},
     Dialog: class {
-        constructor(options) { this.options = options; }
+        constructor(options) {
+            this.options = options;
+            dialogs.push(this);
+        }
         show() {}
         delete() {}
         setFormValues() {}
@@ -82,7 +74,7 @@ const context = {
 context.Texture = class {
     constructor(options) {
         Object.assign(this, options);
-        this.canvas = new FakeCanvas(options.width, options.height);
+        this.canvas = new FakeCanvas(options.width || 4, options.height || 4);
         generatedTextures.push(this);
     }
     add() {}
@@ -102,15 +94,29 @@ assert.strictEqual(actions.length, 1, 'Plugin should create one action');
 assert.strictEqual(actions[0].name, 'Generate PBR Material');
 assert.strictEqual(typeof actions[0].click, 'function');
 
-// Open the dialog and verify the expected controls exist.
 actions[0].click();
-assert.ok(actions[0], 'Tool action should remain available');
+assert.strictEqual(dialogs.length, 1, 'Tool should open one dialog');
+const options = dialogs[0].options;
+assert.ok(options.form.preset);
+assert.ok(options.form.metallic);
+assert.ok(options.form.shininess);
+assert.ok(options.form.normal_strength);
+assert.ok(options.form.detail);
 
-const dialog = registrations[0].definition;
-assert.ok(dialog, 'Plugin definition should exist');
+assert.strictEqual(typeof options.onConfirm, 'function');
+options.onConfirm({
+    preset: 'metal',
+    metallic: 95,
+    shininess: 82,
+    normal_strength: 45,
+    detail: 35
+});
 
-// Directly exercise the map-generation path through the dialog callback.
-// This uses the same code path as the real plugin after form confirmation.
-const dialogInstance = context.Dialog.instances;
+assert.strictEqual(generatedTextures.length, 4, 'One source plus three generated textures should exist');
+const generated = generatedTextures.slice(1);
+assert.deepStrictEqual(generated.map(texture => texture.pbr_channel), ['normal', 'height', 'mer']);
+assert.ok(generated.every(texture => texture.source.startsWith('data:image/png;base64,')));
+assert.strictEqual(context.lastMessage, 'PBR maps generated: Normal, Height and MER.');
+assert.strictEqual(context.lastError, undefined, 'Generation should not report an error');
 
-console.log('Smoke test passed: plugin registers, loads, creates the Tools action, and opens its dialog without throwing.');
+console.log('Smoke test passed: registration, Tools action, settings dialog, PBR generation, and three output maps.');
