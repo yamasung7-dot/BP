@@ -66,7 +66,6 @@ function createMapCanvas(sourceCanvas, kind, settings) {
             const dy = (down - up) * normalStrength;
 
             if (kind === 'normal') {
-                // Tangent-space normal encoded into RGB.
                 const nx = clamp(128 - dx * 127, 0, 255);
                 const ny = clamp(128 - dy * 127, 0, 255);
                 const nz = clamp(255 - (Math.abs(dx) + Math.abs(dy)) * 80, 80, 255);
@@ -82,8 +81,6 @@ function createMapCanvas(sourceCanvas, kind, settings) {
                 out[i + 2] = v;
                 out[i + 3] = data[i + 3];
             } else if (kind === 'mer') {
-                // MER: Metallic, Emissive, Roughness.
-                // Detail slightly modulates roughness so the map is not perfectly flat.
                 const localRoughness = clamp(roughness + (h - 0.5) * 35 * detail, 0, 255);
                 out[i] = metallic;
                 out[i + 1] = 0;
@@ -234,7 +231,22 @@ function openPBRDialog() {
     pbr_dialog.show();
 }
 
-Plugin.register('pbr_material_generator', {
+// Blockbench derives the plugin ID from the loaded file/URL before executing it.
+// If a side-loaded URL is presented in an unusual form, use the loader's pending
+// registration entry so Plugin.register receives the exact ID Blockbench expects.
+function getLoaderPluginId(fallback) {
+    if (typeof Plugins === 'undefined' || !Plugins.registered) return fallback;
+    if (Plugins.registered[fallback]) return fallback;
+
+    const pending = Object.keys(Plugins.registered).find(id => {
+        const plugin = Plugins.registered[id];
+        return plugin && !plugin.installed && plugin.path === '' &&
+            (plugin.source === 'url' || plugin.source === 'file');
+    });
+    return pending || fallback;
+}
+
+Plugin.register(getLoaderPluginId('pbr_material_generator'), {
     title: 'PBR Material Generator',
     author: 'yamasung7-dot',
     description: 'Generate editable PBR maps from the selected Blockbench texture.',
@@ -242,7 +254,9 @@ Plugin.register('pbr_material_generator', {
     version: '0.1.0',
     variant: 'both',
     min_version: '4.9.0',
+    new_repository_format: true,
     tags: ['Texture', 'PBR'],
+    repository: 'https://github.com/yamasung7-dot/BP',
     onload() {
         pbr_action = new Action('pbr_material_generator', {
             name: 'Generate PBR Material',
