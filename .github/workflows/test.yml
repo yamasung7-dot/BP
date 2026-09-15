@@ -18,3 +18,5 @@ jobs:
         run: node --check pbr_material_generator/pbr_material_generator.js
       - name: Smoke test
         run: node tests/smoke_test.js
+      - name: Plugin loader compatibility test
+        run: node tests/plugin_loader_compat_test.js
